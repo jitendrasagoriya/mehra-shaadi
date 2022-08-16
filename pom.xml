@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>com.jitendra.mehra.shaadi</groupId>
 	<artifactId>mehra-shaadi</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<version>1.0.0-SNAPSHOT</version>
 	<name>MehraShaadi</name>
 	<description>MehraShaadi V2 Backend Application</description>
 	<properties>
@@ -37,7 +37,7 @@
 		<dependency>
 			<groupId>org.js.autenticationclient</groupId>
 		    <artifactId>common-authentication</artifactId>
-		    <version>1.2-SNAPSHOT</version>
+		    <version>1.5-SNAPSHOT</version>
 		</dependency>
 
 		<dependency>
@@ -176,25 +176,7 @@
 					</image>
 				</configuration>
 			</plugin>
-			<plugin>
-				<groupId>org.springframework.experimental</groupId>
-				<artifactId>spring-aot-maven-plugin</artifactId>
-				<version>${spring-native.version}</version>
-				<executions>
-					<execution>
-						<id>test-generate</id>
-						<goals>
-							<goal>test-generate</goal>
-						</goals>
-					</execution>
-					<execution>
-						<id>generate</id>
-						<goals>
-							<goal>generate</goal>
-						</goals>
-					</execution>
-				</executions>
-			</plugin>
+			 
 			<plugin>
 				<groupId>org.hibernate.orm.tooling</groupId>
 				<artifactId>hibernate-enhance-maven-plugin</artifactId>

@@ -1,7 +1,5 @@
 package com.jitendra.mehra.shaadi.interceptor;
 
-
- 
 import java.sql.Timestamp;
 
 import javax.servlet.http.HttpServletRequest;
@@ -14,138 +12,140 @@ import org.apache.logging.log4j.Logger;
 import org.js.autenticationclient.auth.CommonAuthentication;
 import org.js.autenticationclient.auth.impl.CommonAuthenticationImpl;
 import org.js.autenticationclient.bean.Authentication;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.bind.ServletRequestUtils;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.ModelAndView;
+import org.springframework.web.util.ContentCachingResponseWrapper;
 
 import com.jitendra.mehra.shaadi.constants.AppConstants;
+import com.jitendra.mehra.shaadi.service.impl.LoggingServiceImpl;
 
 @Configuration
 public class AuthenticatorInterceptor implements HandlerInterceptor {
 
-    private static final Logger logger =   LogManager.getLogger(AuthenticatorInterceptor.class);
+	private static final Logger logger = LogManager.getLogger(AuthenticatorInterceptor.class);
 
+	private CommonAuthentication authentication = new CommonAuthenticationImpl();
 
-    private CommonAuthentication authentication = new CommonAuthenticationImpl();
+	@Autowired
+	private LoggingServiceImpl loggingService;
 
-    /**
-     * This is not a good practice to use sysout. Always integrate any logger with
-     * your application. We will discuss about integrating logger with spring boot
-     * application in some later article
-     */
-    @SuppressWarnings("unused")
+	/**
+	 * This is not a good practice to use sysout. Always integrate any logger with
+	 * your application. We will discuss about integrating logger with spring boot
+	 * application in some later article
+	 */
+	@SuppressWarnings("unused")
 	@Override
-    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object object) throws Exception {
-        if (logger.isDebugEnabled())
-            logger.debug("In preHandle we are Intercepting the Request");
-        if (logger.isDebugEnabled())
-            logger.debug("---------------------------------------------");
-        String requestURI = request.getRequestURI();
-        Integer personId = ServletRequestUtils.getIntParameter(request, "personId", 0);
+	public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object object) throws Exception {
+		if (logger.isDebugEnabled())
+			logger.debug("In preHandle we are Intercepting the Request");
+		if (logger.isDebugEnabled())
+			logger.debug("---------------------------------------------");
+		String requestURI = request.getRequestURI();
+		Integer personId = ServletRequestUtils.getIntParameter(request, "personId", 0);
 
-        /*****************************
-         * URL NOT CHECK AUTHENTICATION
-         *************************************/
+		/*****************************
+		 * URL NOT CHECK AUTHENTICATION
+		 *************************************/
 
-        if( !StringUtils.contains(requestURI, AppConstants.CANDIDATE_URL_PATH) && !StringUtils.contains(requestURI, AppConstants.SEARCH_URL_PATH)) {
-            return true;
-        }    
-      
-        if (request.getMethod().equalsIgnoreCase("OPTIONS")) {
-            return true;
-        }
-        if (request.getMethod().equalsIgnoreCase("POST") && request.getRequestURI().contains("/register")) {
-            return true;
-        }
-        if (request.getMethod().equalsIgnoreCase("GET") && request.getRequestURI().contains("/login")) {
-            return true;
-        }
+		if (!StringUtils.contains(requestURI, AppConstants.CANDIDATE_URL_PATH)
+				&& !StringUtils.contains(requestURI, AppConstants.SEARCH_URL_PATH)) {
+			return true;
+		}
 
-        if ( request.getRequestURI().contains("/error")) {
-            return true;
-        }
+		if (request.getMethod().equalsIgnoreCase("OPTIONS")) {
+			return true;
+		}
+		if (request.getMethod().equalsIgnoreCase("POST") && request.getRequestURI().contains("/register")) {
+			return true;
+		}
+		if (request.getMethod().equalsIgnoreCase("GET") && request.getRequestURI().contains("/login")) {
+			return true;
+		}
 
+		if (request.getRequestURI().contains("/error")) {
+			return true;
+		}
 
+		/*************************************
+		 * CHECK HEADER
+		 *************************************/
 
+		String accessToken = request.getHeader("X-AUTH-LOG-HEADER");
+		if (accessToken == null || accessToken.isEmpty()) {
+			response.getWriter().write("Authentication failed.");
+			response.setStatus(401);
+			return false;
+		}
 
+		/**************************************
+		 * CHECK AUTHENTICTION
+		 *************************************/
+		HttpSession session = request.getSession();
+		Boolean isValid = false;// service.isValidUser(accessToken);
 
-        /*************************************
-         * CHECK HEADER
-         *************************************/
+		Authentication auth = null;
+		auth = authentication.authenticate(accessToken);
 
-        String accessToken = request.getHeader("X-AUTH-LOG-HEADER");
-        if (accessToken == null || accessToken.isEmpty()) {
-            response.getWriter().write("Authentication failed.");
-            response.setStatus(401);
-            return false;
-        }
+		/*************************************
+		 * CHECK SESSION TIME OUT *
+		 *************************************/
+		if (auth != null) {
+			Timestamp lastLogin = auth.getLastLogin();
+			Long lastLoginInMills = lastLogin.getTime();
+			long milliseconds = auth.getExpaireDay() * 24 * 60 * 60 * 1000;
+			if (System.currentTimeMillis() > (lastLoginInMills + milliseconds)) {
+				response.getWriter().write("Session expire. Please login again");
+				response.setStatus(401);
+				return false;
+			} else {
+				isValid = true;
+				request.setAttribute("userId", auth.getUserId());
+				request.setAttribute("username", auth.getUserName());
+			}
+		}
 
-        /**************************************
-         * CHECK AUTHENTICTION
-         *************************************/
-        HttpSession session = request.getSession();
-        Boolean isValid = false;//service.isValidUser(accessToken);
+		if (logger.isDebugEnabled())
+			logger.debug("isValid :" + (isValid == null));
+		if (!isValid) {
+			response.getWriter().write("Authentication failed.");
+			response.setStatus(401);
+			return false;
+		}
+		// if(logger.isDebugEnabled()) logger.debug(accessToken);
+		if (logger.isDebugEnabled())
+			logger.debug("RequestURI::" + requestURI + " || Search for Person with personId ::" + personId);
+		if (logger.isDebugEnabled())
+			logger.debug("---------------------------------------------");
+		return true;
+	}
 
-        Authentication auth = null;
-            auth = authentication.authenticate(accessToken);
+	@Override
+	public void postHandle(HttpServletRequest request, HttpServletResponse response, Object object, ModelAndView model)
+			throws Exception {
+		
+		ContentCachingResponseWrapper responseCacheWrapperObject = new ContentCachingResponseWrapper(response);
+		 byte[] responseArray = responseCacheWrapperObject.getContentAsByteArray();
+	     String responseStr = new String(responseArray, responseCacheWrapperObject.getCharacterEncoding());
+	      
+	      
+		loggingService.displayResp(request, response, responseStr);
+		logger.debug("---------------------------------------------");
+		logger.debug("In postHandle request processing " + "completed by @RestController");
+		logger.debug("---------------------------------------------");
+	}
 
-            /*************************************
-             *        CHECK SESSION TIME OUT     *
-             *************************************/
-            if(auth != null) {
-                Timestamp lastLogin = auth.getLastLogin();
-                Long lastLoginInMills = lastLogin.getTime();
-                long milliseconds = auth.getExpaireDay() * 24 * 60 * 60 * 1000;
-                if (System.currentTimeMillis() > (lastLoginInMills + milliseconds)) {
-                    response.getWriter().write("Session expire. Please login again");
-                    response.setStatus(401);
-                    return false;
-                }
-                else {
-                    isValid = true;
-                    request.setAttribute("userId",auth.getUserId());
-                    request.setAttribute("username",auth.getUserName());
-                }
-            }
-
-
-
-
-        if (logger.isDebugEnabled())
-            logger.debug("isValid :" + (isValid == null));
-        if (!isValid) {
-            response.getWriter().write("Authentication failed.");
-            response.setStatus(401);
-            return false;
-        }
-        // if(logger.isDebugEnabled()) logger.debug(accessToken);
-        if (logger.isDebugEnabled())
-            logger.debug("RequestURI::" + requestURI + " || Search for Person with personId ::" + personId);
-        if (logger.isDebugEnabled())
-            logger.debug("---------------------------------------------");
-        return true;
-    }
-
-    @Override
-    public void postHandle(HttpServletRequest request, HttpServletResponse response, Object object, ModelAndView model)
-            throws Exception {
-        if (logger.isDebugEnabled())
-            logger.debug("---------------------------------------------");
-        if (logger.isDebugEnabled())
-            logger.debug("In postHandle request processing " + "completed by @RestController");
-        if (logger.isDebugEnabled())
-            logger.debug("---------------------------------------------");
-    }
-
-    @Override
-    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object object, Exception arg3)
-            throws Exception {
-        if (logger.isDebugEnabled())
-            logger.debug("---------------------------------------------");
-        if (logger.isDebugEnabled())
-            logger.debug("In afterCompletion Request Completed");
-        if (logger.isDebugEnabled())
-            logger.debug("---------------------------------------------");
-    }
+	@Override
+	public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object object, Exception arg3)
+			throws Exception {
+		if (logger.isDebugEnabled())
+			logger.debug("---------------------------------------------");
+		if (logger.isDebugEnabled())
+			logger.debug("In afterCompletion Request Completed");
+		if (logger.isDebugEnabled())
+			logger.debug("---------------------------------------------");
+	}
 }
